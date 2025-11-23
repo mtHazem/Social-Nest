@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:async';
 import '../models/story_model.dart';
 import '../models/user_model.dart';
 
@@ -1194,29 +1195,34 @@ class FirebaseService with ChangeNotifier {
   }) async {
     _clearError();
     try {
+      // Use a batched write so the notification and unread count update
+      // are committed together. Also add a client-side timestamp
+      // (`createdAt`) so the UI can order and display the notification
+      // immediately without waiting for the server timestamp to resolve.
       final notificationId = _firestore.collection('notifications').doc().id;
-      await _firestore
-          .collection('notifications')
-          .doc(notificationId)
-          .set({
-            'id': notificationId,
-            'userId': receiverId,
-            'type': type,
-            'title': title,
-            'message': message,
-            'from': senderId,
-            'fromName': senderName,
-            'fromAvatar': senderAvatar,
-            'postId': data?['postId'],
-            'storyId': data?['storyId'],
-            'timestamp': FieldValue.serverTimestamp(),
-            'isRead': false,
-          });
+      final batch = _firestore.batch();
 
-      // Update unread count
-      await _firestore.collection('users').doc(receiverId).update({
-        'unreadNotifications': FieldValue.increment(1),
+      final notificationRef = _firestore.collection('notifications').doc(notificationId);
+      batch.set(notificationRef, {
+        'id': notificationId,
+        'userId': receiverId,
+        'type': type,
+        'title': title,
+        'message': message,
+        'from': senderId,
+        'fromName': senderName,
+        'fromAvatar': senderAvatar,
+        'postId': data?['postId'],
+        'storyId': data?['storyId'],
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
       });
+
+      final userRef = _firestore.collection('users').doc(receiverId);
+      batch.update(userRef, {'unreadNotifications': FieldValue.increment(1)});
+
+      await batch.commit();
     } catch (e) {
       _setError('Failed to send notification.');
     }
@@ -1228,15 +1234,49 @@ class FirebaseService with ChangeNotifier {
       if (_auth.currentUser == null) {
         return const Stream.empty();
       }
-      return _firestore
-          .collection('notifications')
-          .where('userId', isEqualTo: _auth.currentUser!.uid)
-          .orderBy('timestamp', descending: true)
-          .snapshots()
-          .handleError((error) {
-            _setError('Failed to load notifications.');
-            return const Stream.empty();
-          });
+
+      final String uid = _auth.currentUser!.uid;
+
+      // We'll attempt a lightweight check: try a one-time get ordered by
+      // `createdAt`. If that query fails (for example due to missing index
+      // or permissions), fall back to ordering by server `timestamp`.
+      final controller = StreamController<QuerySnapshot>.broadcast();
+      controller.onListen = () async {
+        try {
+          final createdQuery = _firestore
+              .collection('notifications')
+              .where('userId', isEqualTo: uid)
+              .orderBy('createdAt', descending: true);
+
+          // Test the query quickly.
+          await createdQuery.limit(1).get();
+
+          // If successful, pipe the realtime snapshots to the controller.
+          createdQuery.snapshots().listen(
+            (s) => controller.add(s),
+            onError: (e) {
+              _setError('Failed to load notifications: $e');
+              controller.addError(e);
+            },
+          );
+        } catch (e) {
+          // Fallback to server timestamp ordering.
+          _setError('createdAt query failed, falling back to timestamp. $e');
+          final tsQuery = _firestore
+              .collection('notifications')
+              .where('userId', isEqualTo: uid)
+              .orderBy('timestamp', descending: true);
+          tsQuery.snapshots().listen(
+            (s) => controller.add(s),
+            onError: (err) {
+              _setError('Failed to load notifications: $err');
+              controller.addError(err);
+            },
+          );
+        }
+      };
+
+      return controller.stream;
     } catch (e) {
       _setError('Failed to get user notifications.');
       return const Stream.empty();

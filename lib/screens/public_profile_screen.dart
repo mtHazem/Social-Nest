@@ -1406,6 +1406,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> with SingleTi
         'userId': widget.userId,
         'from': currentUserId,
         'type': 'friend_request',
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
       },

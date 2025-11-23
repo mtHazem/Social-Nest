@@ -1,4 +1,3 @@
-// lib/screens/notifications_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -99,6 +98,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: StreamBuilder<QuerySnapshot>(
         stream: firebaseService.getNotifications(),
         builder: (context, snapshot) {
+          // If the FirebaseService recorded an error, show it for debugging
+          if (firebaseService.lastError != null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
+                    const SizedBox(height: 12),
+                    Text(firebaseService.lastError!, style: const TextStyle(color: Colors.white)),
+                    const SizedBox(height: 8),
+                    const Text('Check Firestore rules / indexes.', style: TextStyle(color: Color(0xFF94A3B8))),
+                  ],
+                ),
+              ),
+            );
+          }
+
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -146,7 +164,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               final isRead = data['isRead'] == true;
               final senderName = data['fromName'] ?? 'User';
               final senderAvatar = data['fromAvatar'] ?? senderName[0];
-              final timeAgo = _getTimeAgo(data['timestamp'] as Timestamp);
+              final timeAgo = _getTimeAgoFromDynamic(data['timestamp'], data['createdAt']);
 
               return Card(
                 color: const Color(0xFF1E293B),
@@ -174,10 +192,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        timeAgo,
-                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                      ),
+                      Text(timeAgo, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                     ],
                   ),
                   trailing: _buildTrailingAction(data),
@@ -189,6 +204,37 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         },
       ),
     );
+  }
+
+  String _getTimeAgoFromDynamic(dynamic timestampField, dynamic createdAtField) {
+    DateTime time;
+    try {
+      if (timestampField != null && timestampField is Timestamp) {
+        time = timestampField.toDate();
+      } else if (createdAtField != null) {
+        // createdAt stored as milliseconds since epoch
+        if (createdAtField is int) {
+          time = DateTime.fromMillisecondsSinceEpoch(createdAtField);
+        } else if (createdAtField is String) {
+          final parsed = int.tryParse(createdAtField) ?? DateTime.now().millisecondsSinceEpoch;
+          time = DateTime.fromMillisecondsSinceEpoch(parsed);
+        } else {
+          time = DateTime.now();
+        }
+      } else {
+        time = DateTime.now();
+      }
+    } catch (e) {
+      time = DateTime.now();
+    }
+
+    final now = DateTime.now();
+    final difference = now.difference(time);
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${(difference.inDays / 7).floor()}w ago';
   }
 
   String _getTitle(Map<String, dynamic> notif) {
@@ -243,16 +289,5 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
     return null;
-  }
-
-  String _getTimeAgo(Timestamp timestamp) {
-    final now = DateTime.now();
-    final time = timestamp.toDate();
-    final difference = now.difference(time);
-    if (difference.inMinutes < 1) return 'Just now';
-    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
-    if (difference.inHours < 24) return '${difference.inHours}h ago';
-    if (difference.inDays < 7) return '${difference.inDays}d ago';
-    return '${(difference.inDays / 7).floor()}w ago';
   }
 }
