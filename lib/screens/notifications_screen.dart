@@ -1,7 +1,11 @@
+// lib/screens/notifications_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firebase_service.dart';
+import 'comments_screen.dart';
+import 'story_likes_screen.dart';
+import 'public_profile_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -11,250 +15,122 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  bool _isLoading = false;
-
-  String _getTimeAgo(Timestamp timestamp) {
-    final now = DateTime.now();
-    final notificationTime = timestamp.toDate();
-    final difference = now.difference(notificationTime);
-
-    if (difference.inMinutes < 1) return 'Just now';
-    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
-    if (difference.inHours < 24) return '${difference.inHours}h ago';
-    if (difference.inDays < 7) return '${difference.inDays}d ago';
-    
-    // Format without intl package
-    final month = notificationTime.month;
-    final day = notificationTime.day;
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[month - 1]} $day';
+  @override
+  void initState() {
+    super.initState();
+    // Mark all as read when entering screen (optional)
+    // Provider.of<FirebaseService>(context, listen: false).markAllNotificationsAsRead();
   }
 
-  IconData _getNotificationIcon(String type) {
-    switch (type) {
-      case 'post_like':
-        return Icons.favorite_rounded;
-      case 'post_comment':
-        return Icons.chat_bubble_rounded;
-      case 'friend_request':
-        return Icons.person_add_rounded;
-      case 'friend_accepted':
-        return Icons.people_rounded;
-      case 'story_like':
-        return Icons.favorite_rounded;
-      case 'quiz_created':
-        return Icons.quiz_rounded;
-      case 'achievement_unlocked':
-        return Icons.emoji_events_rounded;
-      default:
-        return Icons.notifications_rounded;
-    }
-  }
+  void _handleNotificationTap(Map<String, dynamic> notif) async {
+    final type = notif['type'] as String?;
+    final from = notif['from'] as String?;
+    final postId = notif['postId'] as String?;
+    final storyId = notif['storyId'] as String?;
 
-  Color _getNotificationColor(String type) {
-    switch (type) {
-      case 'post_like':
-        return Colors.red;
-      case 'story_like':
-        return Colors.red;
-      case 'post_comment':
-        return Colors.blue;
-      case 'friend_request':
-        return Colors.green;
-      case 'friend_accepted':
-        return Colors.green;
-      case 'quiz_created':
-        return Colors.orange;
-      case 'achievement_unlocked':
-        return Colors.amber;
-      default:
-        return const Color(0xFF7C3AED);
-    }
-  }
-
-  String _getNotificationTitle(String type, String title) {
-    return title;
-  }
-
-  String _getNotificationMessage(String type, String message) {
-    return message;
-  }
-
-  Future<void> _markAllAsRead() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      await Provider.of<FirebaseService>(context, listen: false)
-          .markAllNotificationsAsRead();
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('All notifications marked as read'),
-          backgroundColor: Colors.green,
+    if (type == 'friend_request' && from != null) {
+      // Navigate to public profile to handle accept/decline
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: from)),
+      );
+    } else if ((type == 'post_like' || type == 'post_comment') && postId != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CommentsScreen(postId: postId, postContent: ''),
         ),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
+    } else if (type == 'story_like' && storyId != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StoryLikesScreen(storyId: storyId),
         ),
       );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+    } else if (from != null) {
+      // Fallback: go to user profile
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: from)),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final firebaseService = Provider.of<FirebaseService>(context);
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text(
-          'Notifications',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0F172A),
+        title: const Text('Notifications'),
         foregroundColor: Colors.white,
-        elevation: 0,
-        leading: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: const Icon(Icons.arrow_back_rounded),
-          ),
-        ),
         actions: [
-          StreamBuilder<QuerySnapshot>(
-            stream: Provider.of<FirebaseService>(context).getUserNotifications(),
-            builder: (context, snapshot) {
-              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                final hasUnread = snapshot.data!.docs.any((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return data['isRead'] == false;
-                });
-                
-                if (hasUnread) {
-                  return MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: _isLoading ? null : _markAllAsRead,
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.mark_email_read_rounded),
+          IconButton(
+            icon: const Icon(Icons.markunread_mailbox_rounded),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E293B),
+                  title: const Text('Mark All as Read'),
+                  content: const Text('Are you sure you want to mark all notifications as read?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
                     ),
-                  );
-                }
-              }
-              return const SizedBox.shrink();
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        firebaseService.markAllNotificationsAsRead();
+                      },
+                      child: const Text('Mark All'),
+                    ),
+                  ],
+                ),
+              );
             },
           ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: Provider.of<FirebaseService>(context).getUserNotifications(),
+        stream: firebaseService.getNotifications(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(Color(0xFF7C3AED)),
-              ),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
-
           if (snapshot.hasError) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.error_outline_rounded,
-                    size: 64,
-                    color: Color(0xFF94A3B8),
-                  ),
+                  const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Error loading notifications',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    snapshot.error.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
+                  const Text('Failed to load notifications', style: TextStyle(color: Colors.white)),
+                  Text('${snapshot.error}', style: const TextStyle(color: Color(0xFF94A3B8))),
                 ],
               ),
             );
           }
-
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.notifications_off_rounded,
-                    size: 80,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  const SizedBox(height: 20),
+                  const Icon(Icons.notifications_none_rounded, size: 80, color: Color(0xFF94A3B8)),
+                  const SizedBox(height: 16),
                   const Text(
                     'No notifications yet',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 20),
                   ),
-                  const SizedBox(height: 12),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 40),
-                    child: Text(
-                      'When you get notifications, they\'ll appear here. Stay active to see more!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF94A3B8),
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF7C3AED),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                      ),
-                      child: const Text('Go Back Home'),
-                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'You’ll see likes, comments, friend requests, and more here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF94A3B8)),
                   ),
                 ],
               ),
@@ -262,267 +138,121 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           }
 
           final notifications = snapshot.data!.docs;
-
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
             itemCount: notifications.length,
             itemBuilder: (context, index) {
-              final notification = notifications[index];
-              final data = notification.data() as Map<String, dynamic>;
-              final isRead = data['isRead'] ?? false;
-              final type = data['type'] ?? 'general';
-              final title = data['title'] ?? 'Notification';
-              final message = data['message'] ?? '';
-              final senderName = data['senderName'] ?? 'User';
-              final senderAvatar = data['senderAvatar'] ?? 'U';
-              final timestamp = data['timestamp'] as Timestamp;
+              final doc = notifications[index];
+              final data = doc.data() as Map<String, dynamic>;
+              final isRead = data['isRead'] == true;
+              final senderName = data['fromName'] ?? 'User';
+              final senderAvatar = data['fromAvatar'] ?? senderName[0];
+              final timeAgo = _getTimeAgo(data['timestamp'] as Timestamp);
 
-              return Dismissible(
-                key: Key(notification.id),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade400,
-                    borderRadius: BorderRadius.circular(12),
+              return Card(
+                color: const Color(0xFF1E293B),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    child: Text(senderAvatar, style: const TextStyle(color: Colors.white)),
                   ),
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  child: const Icon(
-                    Icons.delete_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                confirmDismiss: (direction) async {
-                  // Show confirmation dialog
-                  return await showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      backgroundColor: const Color(0xFF1E293B),
-                      title: const Text(
-                        'Delete Notification',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      content: const Text(
-                        'Are you sure you want to delete this notification?',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text(
-                            'Cancel',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text(
-                            'Delete',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                onDismissed: (direction) {
-                  // Delete notification from Firebase
-                  Provider.of<FirebaseService>(context, listen: false)
-                      .markNotificationAsRead(notification.id);
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: isRead
-                        ? const Color(0xFF1E293B)
-                        : const Color(0xFF7C3AED).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border: isRead
-                        ? null
-                        : Border.all(
-                            color: const Color(0xFF7C3AED).withOpacity(0.3),
-                            width: 1,
-                          ),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () {
-                          if (!isRead) {
-                            Provider.of<FirebaseService>(context, listen: false)
-                                .markNotificationAsRead(notification.id);
-                          }
-
-                          // Handle notification tap based on type
-                          switch (type) {
-                            case 'post_like':
-                            case 'post_comment':
-                              // Navigate to post
-                              // Navigator.push(...);
-                              break;
-                            case 'friend_request':
-                              // Navigate to friends screen
-                              // Navigator.push(...);
-                              break;
-                            case 'story_like':
-                              // Navigate to story
-                              // Navigator.push(...);
-                              break;
-                            default:
-                              break;
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Notification Icon
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: _getNotificationColor(type)
-                                      .withOpacity(0.2),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  _getNotificationIcon(type),
-                                  color: _getNotificationColor(type),
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-
-                              // Notification Content
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Sender Avatar and Name
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 24,
-                                          height: 24,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF7C3AED),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              senderAvatar,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          senderName,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-
-                                    // Notification Title
-                                    Text(
-                                      _getNotificationTitle(type, title),
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-
-                                    // Notification Message
-                                    Text(
-                                      _getNotificationMessage(type, message),
-                                      style: const TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-
-                                    // Timestamp
-                                    Text(
-                                      _getTimeAgo(timestamp),
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.5),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // Unread Indicator
-                              if (!isRead)
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF7C3AED),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
+                  title: Text(
+                    _getTitle(data),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
                     ),
                   ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getMessage(data),
+                        style: TextStyle(
+                          color: const Color(0xFF94A3B8),
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        timeAgo,
+                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  trailing: _buildTrailingAction(data),
+                  onTap: () => _handleNotificationTap(data),
                 ),
               );
             },
           );
         },
       ),
-
-      // Clear All Button (only show if there are notifications)
-      floatingActionButton: StreamBuilder<QuerySnapshot>(
-        stream: Provider.of<FirebaseService>(context).getUserNotifications(),
-        builder: (context, snapshot) {
-          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-            return MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: FloatingActionButton.extended(
-                onPressed: _markAllAsRead,
-                backgroundColor: const Color(0xFF7C3AED),
-                foregroundColor: Colors.white,
-                icon: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(Colors.white),
-                        ),
-                      )
-                    : const Icon(Icons.mark_email_read_rounded),
-                label: _isLoading
-                    ? const Text('Processing...')
-                    : const Text('Mark All Read'),
-              ),
-            );
-          }
-          return const SizedBox.shrink();
-        },
-      ),
     );
+  }
+
+  String _getTitle(Map<String, dynamic> notif) {
+    switch (notif['type']) {
+      case 'friend_request':
+        return '${notif['fromName'] ?? 'User'} sent you a friend request';
+      case 'friend_accepted':
+        return 'Friend request accepted';
+      case 'post_like':
+        return 'Liked your post';
+      case 'post_comment':
+        return 'Commented on your post';
+      case 'story_like':
+        return 'Liked your story';
+      default:
+        return notif['title'] ?? 'New notification';
+    }
+  }
+
+  String _getMessage(Map<String, dynamic> notif) {
+    return notif['message'] ?? '';
+  }
+
+  Widget? _buildTrailingAction(Map<String, dynamic> notif) {
+    if (notif['type'] == 'friend_request') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.check, color: Colors.green),
+            onPressed: () async {
+              await Provider.of<FirebaseService>(context, listen: false)
+                  .acceptFriendRequest(notif['from'] as String);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Friend request accepted')),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.red),
+            onPressed: () async {
+              await Provider.of<FirebaseService>(context, listen: false)
+                  .declineFriendRequest(notif['from'] as String);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Friend request declined')),
+                );
+              }
+            },
+          ),
+        ],
+      );
+    }
+    return null;
+  }
+
+  String _getTimeAgo(Timestamp timestamp) {
+    final now = DateTime.now();
+    final time = timestamp.toDate();
+    final difference = now.difference(time);
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${(difference.inDays / 7).floor()}w ago';
   }
 }

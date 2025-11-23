@@ -4,6 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_service.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/profile_screen.dart';        // 👈 Added import
+import 'screens/public_profile_screen.dart'; // 👈 Added import
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +24,6 @@ void main() async {
     print('🔥 Firebase initialized successfully');
   } catch (e) {
     print('❌ Firebase initialization failed: $e');
-    // Optionally show error UI, but for now we proceed
   }
 
   runApp(const SocialNestApp());
@@ -49,16 +50,26 @@ class SocialNestApp extends StatelessWidget {
             secondary: Color(0xFF06B6D4),
           ),
         ),
-        // ✅ Define named routes for safe navigation
+        // ✅ Define all named routes
         routes: {
-          '/': (context) => _AuthWrapper(), // root defaults to auth wrapper
+          '/': (context) => _AuthWrapper(),
           '/welcome': (context) => const WelcomeScreen(),
           '/home': (context) => const HomeScreen(),
+          '/profile': (context) => const ProfileScreen(), // current user's own profile
+          '/public_profile': (context) {
+            final args = ModalRoute.of(context)!.settings.arguments as String?;
+            if (args == null) {
+              // Handle missing argument gracefully
+              return const Scaffold(
+                body: Center(child: Text('User ID not provided', style: TextStyle(color: Colors.white))),
+              );
+            }
+            return PublicProfileScreen(userId: args);
+          },
         },
-        // ✅ Set initial route explicitly
         initialRoute: '/',
         onGenerateRoute: (settings) {
-          // Fallback (should not be needed due to routes map)
+          // Fallback route (should rarely be used)
           return MaterialPageRoute(builder: (_) => const WelcomeScreen());
         },
       ),
@@ -66,8 +77,9 @@ class SocialNestApp extends StatelessWidget {
   }
 }
 
-// ✅ Dedicated wrapper to listen to auth state
 class _AuthWrapper extends StatelessWidget {
+  const _AuthWrapper({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Consumer<FirebaseService>(

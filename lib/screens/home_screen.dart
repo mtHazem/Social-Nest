@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pull_to_refresh/pull_to_refresh.dart'; // ADD THIS DEPENDENCY
+import 'package:pull_to_refresh/pull_to_refresh.dart';
 import '../firebase_service.dart';
 import 'profile_screen.dart';
 import 'create_screen.dart';
@@ -13,7 +13,9 @@ import 'create_story_screen.dart';
 import 'story_screen.dart';
 import 'stories_section.dart';
 import 'saved_posts_screen.dart';
-import '../widgets/skeleton_loader.dart'; // NEW: Import skeleton loader
+import '../widgets/skeleton_loader.dart';
+import 'search_results_screen.dart'; // 👈 NEW
+import 'chat_list_screen.dart';     // 👈 NEW
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,17 +28,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _currentIndex = 0;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
-  // NEW: Refresh controller for pull-to-refresh
   final RefreshController _refreshController = RefreshController(initialRefresh: false);
-  
-  // NEW: Scroll controller for detecting scroll position
   final ScrollController _scrollController = ScrollController();
-  
-  // NEW: Track loading states
   bool _isLoadingPosts = false;
   bool _hasError = false;
   String _errorMessage = '';
+  final TextEditingController _searchController = TextEditingController(); // 👈 NEW
 
   @override
   void initState() {
@@ -49,8 +46,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
-    
-    // NEW: Listen for errors from FirebaseService
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final firebaseService = Provider.of<FirebaseService>(context, listen: false);
       if (firebaseService.lastError != null) {
@@ -67,26 +62,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _animationController.dispose();
     _refreshController.dispose();
     _scrollController.dispose();
+    _searchController.dispose(); // 👈 NEW
     super.dispose();
   }
 
-  // NEW: Pull to refresh handler
+  // 👇 NEW: User search method
+  void _searchUsers() {
+    if (_searchController.text.trim().isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SearchResultsScreen(query: _searchController.text.trim())),
+    );
+    _searchController.clear();
+  }
+
   void _onRefresh() async {
     try {
-      // Simulate network delay for better UX
       await Future.delayed(const Duration(milliseconds: 1000));
-      
-      // Clear any existing errors
       setState(() {
         _hasError = false;
         _errorMessage = '';
       });
-      
-      // Refresh would typically reload data here
-      // For now, we'll just complete the refresh
       _refreshController.refreshCompleted();
-      
-      // Show success indicator
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Feed updated!'),
@@ -105,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // NEW: Error widget
   Widget _buildErrorWidget() {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -177,7 +173,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  // NEW: Enhanced empty state
   Widget _buildEmptyState() {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -319,7 +314,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final now = DateTime.now();
     final postTime = timestamp.toDate();
     final difference = now.difference(postTime);
-
     if (difference.inMinutes < 1) return 'Just now';
     if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
     if (difference.inHours < 24) return '${difference.inHours}h ago';
@@ -327,7 +321,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return '${(difference.inDays / 7).floor()}w ago';
   }
 
-  // NEW: Enhanced share post method
   void _sharePost(String postId, String content) {
     showDialog(
       context: context,
@@ -423,7 +416,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final firebaseService = Provider.of<FirebaseService>(context);
-    
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: AnimatedBuilder(
@@ -434,14 +426,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: SafeArea(
               child: Column(
                 children: [
-                  // Enhanced Custom App Bar
                   Container(
                     color: const Color(0xFF1E293B),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Row(
                         children: [
-                          // Enhanced Logo
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
@@ -465,8 +455,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             ),
                           ),
                           const Spacer(),
-                          
-                          // Enhanced Notification Icon with Badge
                           StreamBuilder<DocumentSnapshot>(
                             stream: firebaseService.getUnreadNotificationCount(),
                             builder: (context, snapshot) {
@@ -475,7 +463,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 final userData = snapshot.data!.data() as Map<String, dynamic>;
                                 unreadCount = userData['unreadNotifications'] ?? 0;
                               }
-                              
                               return MouseRegion(
                                 cursor: SystemMouseCursors.click,
                                 child: GestureDetector(
@@ -508,13 +495,39 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             },
                           ),
                           const SizedBox(width: 12),
-                          
-                          // Enhanced Search Icon
+                          // 🔴 UPDATED: Search icon now opens user search dialog
                           MouseRegion(
                             cursor: SystemMouseCursors.click,
                             child: GestureDetector(
                               onTap: () {
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => const ExploreScreen()));
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    backgroundColor: const Color(0xFF1E293B),
+                                    title: const Text('Search Users'),
+                                    content: TextField(
+                                      controller: _searchController,
+                                      decoration: const InputDecoration(hintText: 'Enter name or username...'),
+                                      onSubmitted: (value) {
+                                        Navigator.pop(context);
+                                        _searchUsers();
+                                      },
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.pop(context);
+                                          _searchUsers();
+                                        },
+                                        child: const Text('Search'),
+                                      ),
+                                    ],
+                                  ),
+                                );
                               },
                               child: Container(
                                 padding: const EdgeInsets.all(8),
@@ -534,40 +547,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                     ),
                   ),
-
-                  // Content Area with Pull to Refresh
                   Expanded(
                     child: SmartRefresher(
                       controller: _refreshController,
                       onRefresh: _onRefresh,
-                      enablePullDown: true,
-                      enablePullUp: false,
-                      header: ClassicHeader(
-                        height: 60,
-                        completeDuration: const Duration(milliseconds: 500),
-                        refreshingText: 'Updating feed...',
-                        completeText: 'Feed updated!',
-                        failedText: 'Update failed',
-                        releaseText: 'Release to refresh',
-                        idleText: 'Pull down to refresh',
-                        textStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                        refreshingIcon: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              const Color(0xFF7C3AED).withOpacity(0.8),
-                            ),
-                          ),
-                        ),
-                      ),
                       child: SingleChildScrollView(
                         controller: _scrollController,
                         physics: const BouncingScrollPhysics(),
                         child: Column(
                           children: [
-                            // Stories Section with Skeleton
                             StreamBuilder<List<dynamic>>(
                               stream: firebaseService.getStories(),
                               builder: (context, snapshot) {
@@ -585,8 +573,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 return const StoriesSection();
                               },
                             ),
-
-                            // Quick Actions with Skeleton
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               child: Row(
@@ -596,9 +582,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       Icons.quiz_rounded,
                                       'Daily Quiz',
                                       Colors.green,
-                                      () {
-                                        // Navigate to quiz screen
-                                      },
+                                      () {},
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -618,16 +602,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       Icons.emoji_events_rounded,
                                       'Achievements',
                                       Colors.amber,
-                                      () {
-                                        // Navigate to achievements
-                                      },
+                                      () {},
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-
-                            // Create Post Card
                             Container(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               padding: const EdgeInsets.all(16),
@@ -695,11 +675,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 ],
                               ),
                             ),
-
-                            // Error Display
                             if (_hasError) _buildErrorWidget(),
-
-                            // Posts Feed from Firebase with Enhanced Loading
                             StreamBuilder<QuerySnapshot>(
                               stream: firebaseService.getPosts(),
                               builder: (context, snapshot) {
@@ -708,7 +684,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     children: List.generate(3, (index) => const PostSkeleton()),
                                   );
                                 }
-
                                 if (snapshot.hasError) {
                                   return Container(
                                     margin: const EdgeInsets.all(16),
@@ -750,13 +725,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     ),
                                   );
                                 }
-
                                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                                   return _buildEmptyState();
                                 }
-
                                 final posts = snapshot.data!.docs;
-
                                 return ListView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
@@ -772,8 +744,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 );
                               },
                             ),
-
-                            const SizedBox(height: 80), // Space for bottom navigation
+                            const SizedBox(height: 80),
                           ],
                         ),
                       ),
@@ -785,8 +756,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         },
       ),
-
-      // Enhanced Bottom Navigation Bar
+      // 🔴 UPDATED: Bottom Nav — Replace "Friends" with "Chat"
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1E293B),
@@ -817,9 +787,42 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const ExploreScreen()));
                 }),
                 _buildFloatingActionButton(),
-                _buildNavItem(Icons.people_rounded, 'Friends', 2, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const FriendsScreen()));
-                }),
+                // 🔴 REPLACED: Friends → Chat
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _currentIndex == 2 ? const Color(0xFF7C3AED).withOpacity(0.2) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.chat_rounded,
+                            color: _currentIndex == 2 ? const Color(0xFF7C3AED) : Colors.white.withOpacity(0.5),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Chat',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: _currentIndex == 2 ? const Color(0xFF7C3AED) : Colors.white.withOpacity(0.5),
+                            fontWeight: _currentIndex == 2 ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 _buildNavItem(Icons.person_rounded, 'Profile', 3, () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
                 }),
@@ -872,7 +875,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final typeLabel = _getPostTypeLabel(post['type'] ?? 'social');
     final hasImage = post['imageUrl'] != null && post['imageUrl'].toString().isNotEmpty;
     final isQuiz = post['type'] == 'quiz';
-
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
@@ -887,7 +889,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
       child: Column(
         children: [
-          // Enhanced Post Header
           ListTile(
             leading: CircleAvatar(
               backgroundColor: const Color(0xFF7C3AED),
@@ -932,8 +933,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-
-          // Enhanced Post Content
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
@@ -966,8 +965,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
           ),
-
-          // Enhanced Post Image with Loading
           if (hasImage) ...[
             const SizedBox(height: 16),
             Container(
@@ -1019,8 +1016,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ],
-
-          // Enhanced Quiz Section
           if (isQuiz && post['quizOptions'] != null) ...[
             const SizedBox(height: 16),
             Container(
@@ -1047,19 +1042,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     final totalVotes = post['totalVotes'] ?? 0;
                     final percentage = totalVotes > 0 ? (votes / totalVotes) * 100 : 0;
                     final hasVoted = (post['votedUsers'] as List<dynamic>?)?.contains(firebaseService.currentUser?.uid) ?? false;
-                    
                     return MouseRegion(
                       cursor: hasVoted ? SystemMouseCursors.basic : SystemMouseCursors.click,
                       child: GestureDetector(
-                        onTap: hasVoted 
-                            ? null // Disable tap if already voted
+                        onTap: hasVoted
+                            ? null
                             : () async {
-                                // Vote on this option
                                 final success = await Provider.of<FirebaseService>(context, listen: false)
                                     .voteOnQuiz(postId, option);
-                                
                                 if (success) {
-                                  // Show success message
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text('Voted for: $option'),
@@ -1084,7 +1075,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: hasVoted 
+                            color: hasVoted
                                 ? const Color(0xFF7C3AED).withOpacity(0.2)
                                 : Colors.white.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -1119,7 +1110,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               ),
                               if (hasVoted || totalVotes > 0) ...[
                                 const SizedBox(height: 6),
-                                // Progress bar
                                 Container(
                                   height: 6,
                                   decoration: BoxDecoration(
@@ -1189,8 +1179,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       fontSize: 12,
                     ),
                   ),
-                  
-                  // Results summary if user has voted
                   if ((post['votedUsers'] as List<dynamic>?)?.contains(firebaseService.currentUser?.uid) ?? false) ...[
                     const SizedBox(height: 12),
                     Container(
@@ -1220,10 +1208,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ],
-
           const SizedBox(height: 16),
-
-          // Enhanced Post Stats
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -1286,10 +1271,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ],
             ),
           ),
-
           const SizedBox(height: 8),
-
-          // Enhanced Post Actions
           Container(
             height: 1,
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1300,12 +1282,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                // Enhanced Like Button
                 StreamBuilder<bool>(
                   stream: Provider.of<FirebaseService>(context, listen: false).getPostLikeStatus(postId),
                   builder: (context, snapshot) {
                     final isLiked = snapshot.data ?? false;
-                    
                     return _buildPostAction(
                       Icons.favorite_rounded,
                       'Like',
@@ -1316,8 +1296,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     );
                   },
                 ),
-                
-                // Enhanced Comment Button
                 _buildPostAction(
                   Icons.chat_bubble_rounded,
                   'Comment',
@@ -1334,8 +1312,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     );
                   },
                 ),
-                
-                // Enhanced Share Button
                 _buildPostAction(
                   Icons.share_rounded,
                   'Share',
@@ -1344,13 +1320,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     _sharePost(postId, post['content'] ?? '');
                   },
                 ),
-                
-                // Enhanced SAVE BUTTON
                 StreamBuilder<bool>(
                   stream: Provider.of<FirebaseService>(context, listen: false).getPostSaveStatus(postId),
                   builder: (context, snapshot) {
                     final isSaved = snapshot.data ?? false;
-                    
                     return _buildPostAction(
                       isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
                       'Save',

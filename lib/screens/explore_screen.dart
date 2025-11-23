@@ -260,39 +260,6 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
               ),
             ),
             const SizedBox(height: 16),
-            
-            // Search users
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: Provider.of<FirebaseService>(context).searchUsers(_searchQuery),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(Color(0xFF7C3AED)),
-                    ),
-                  );
-                }
-
-                if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Users',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ...snapshot.data!.map((user) => _buildUserSearchResult(user)),
-                    ],
-                  );
-                }
-
-                return const SizedBox();
-              },
-            ),
 
             const SizedBox(height: 24),
 
