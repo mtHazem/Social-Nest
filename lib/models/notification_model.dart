@@ -1,3 +1,4 @@
+// notification_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class NotificationModel {
@@ -5,13 +6,14 @@ class NotificationModel {
   final String type;
   final String title;
   final String message;
-  final String senderId;
-  final String senderName;
-  final String senderAvatar;
-  final String? targetId; // postId, commentId, etc.
-  final Map<String, dynamic>? data;
+  final String senderId;        // maps to 'from' in Firestore
+  final String senderName;      // maps to 'fromName'
+  final String senderAvatar;    // maps to 'fromAvatar'
+  final String? postId;         // from data['postId']
+  final String? storyId;        // from data['storyId']
   final bool isRead;
-  final Timestamp timestamp;
+  final int createdAt;          // milliseconds since epoch
+  final Timestamp timestamp;    // server timestamp
 
   NotificationModel({
     required this.id,
@@ -21,9 +23,10 @@ class NotificationModel {
     required this.senderId,
     required this.senderName,
     required this.senderAvatar,
-    this.targetId,
-    this.data,
+    this.postId,
+    this.storyId,
     this.isRead = false,
+    required this.createdAt,
     required this.timestamp,
   });
 
@@ -33,36 +36,42 @@ class NotificationModel {
       type: map['type'] ?? '',
       title: map['title'] ?? '',
       message: map['message'] ?? '',
-      senderId: map['senderId'] ?? '',
-      senderName: map['senderName'] ?? '',
-      senderAvatar: map['senderAvatar'] ?? '',
-      targetId: map['targetId'],
-      data: map['data'],
+      senderId: map['from'] ?? '',                // ✅ 'from' → senderId
+      senderName: map['fromName'] ?? '',          // ✅ 'fromName'
+      senderAvatar: map['fromAvatar'] ?? '',      // ✅ 'fromAvatar'
+      postId: map['postId'],                      // ✅ direct field (not nested in 'data')
+      storyId: map['storyId'],                    // ✅ direct field
       isRead: map['isRead'] ?? false,
-      timestamp: map['timestamp'] ?? Timestamp.now(),
+      createdAt: map['createdAt'] ?? DateTime.now().millisecondsSinceEpoch,
+      timestamp: map['timestamp'] is Timestamp
+          ? map['timestamp']
+          : Timestamp.fromMillisecondsSinceEpoch(map['createdAt'] ?? DateTime.now().millisecondsSinceEpoch),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'userId': senderId, // ❗ Note: This model doesn't store receiver ID — for display only
       'type': type,
       'title': title,
       'message': message,
-      'senderId': senderId,
-      'senderName': senderName,
-      'senderAvatar': senderAvatar,
-      'targetId': targetId,
-      'data': data,
+      'from': senderId,
+      'fromName': senderName,
+      'fromAvatar': senderAvatar,
+      'postId': postId,
+      'storyId': storyId,
       'isRead': isRead,
+      'createdAt': createdAt,
       'timestamp': timestamp,
     };
   }
 
   String get timeAgo {
     final now = DateTime.now();
-    final difference = now.difference(timestamp.toDate());
-    
+    final postTime = timestamp.toDate();
+    final difference = now.difference(postTime);
+
     if (difference.inMinutes < 1) return 'Just now';
     if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
     if (difference.inHours < 24) return '${difference.inHours}h ago';

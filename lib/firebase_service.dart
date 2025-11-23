@@ -13,9 +13,9 @@ class FirebaseService with ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // NEW: Enhanced loading and error states
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+
   String? _lastError;
   String? get lastError => _lastError;
 
@@ -155,7 +155,6 @@ class FirebaseService with ChangeNotifier {
     }
   }
 
-  // NEW: Get user data by ID
   Future<UserModel?> getUserById(String userId) async {
     _clearError();
     try {
@@ -207,17 +206,13 @@ class FirebaseService with ChangeNotifier {
   }
 
   // ========== FRIENDS MANAGEMENT METHODS ==========
-  // 🔹 NEW: Send friend request
   Future<void> sendFriendRequest(String friendId) async {
     final currentUserId = currentUser?.uid;
     if (currentUserId == null) return;
-
     _setLoading(true);
     _clearError();
     try {
       final batch = _firestore.batch();
-
-      // Create bidirectional pending entries
       batch.set(
         _firestore.collection('friends').doc('$currentUserId\_$friendId'),
         {
@@ -236,8 +231,6 @@ class FirebaseService with ChangeNotifier {
           'timestamp': FieldValue.serverTimestamp(),
         },
       );
-
-      // Create notification
       await sendNotification(
         receiverId: friendId,
         type: 'friend_request',
@@ -248,7 +241,6 @@ class FirebaseService with ChangeNotifier {
         senderAvatar: userAvatar ?? "U",
         data: {'requestId': 'pending'},
       );
-
       await batch.commit();
       notifyListeners();
     } catch (e) {
@@ -258,17 +250,13 @@ class FirebaseService with ChangeNotifier {
     }
   }
 
-  // 🔹 NEW: Accept friend request
   Future<void> acceptFriendRequest(String friendId) async {
     final currentUserId = currentUser?.uid;
     if (currentUserId == null) return;
-
     _setLoading(true);
     _clearError();
     try {
       final batch = _firestore.batch();
-
-      // Update both directions to "accepted"
       batch.update(
         _firestore.collection('friends').doc('$currentUserId\_$friendId'),
         {'status': 'accepted'},
@@ -277,8 +265,6 @@ class FirebaseService with ChangeNotifier {
         _firestore.collection('friends').doc('$friendId\_$currentUserId'),
         {'status': 'accepted'},
       );
-
-      // Update friend counts
       batch.update(
         _firestore.collection('users').doc(currentUserId),
         {'friendsCount': FieldValue.increment(1)},
@@ -287,8 +273,6 @@ class FirebaseService with ChangeNotifier {
         _firestore.collection('users').doc(friendId),
         {'friendsCount': FieldValue.increment(1)},
       );
-
-      // Send acceptance notification
       await sendNotification(
         receiverId: friendId,
         type: 'friend_accepted',
@@ -298,7 +282,6 @@ class FirebaseService with ChangeNotifier {
         senderName: userName ?? "User",
         senderAvatar: userAvatar ?? "U",
       );
-
       await batch.commit();
       notifyListeners();
     } catch (e) {
@@ -308,20 +291,15 @@ class FirebaseService with ChangeNotifier {
     }
   }
 
-  // 🔹 NEW: Decline friend request
   Future<void> declineFriendRequest(String friendId) async {
     final currentUserId = currentUser?.uid;
     if (currentUserId == null) return;
-
     _setLoading(true);
     _clearError();
     try {
       final batch = _firestore.batch();
-
-      // Delete both pending entries
       batch.delete(_firestore.collection('friends').doc('$currentUserId\_$friendId'));
       batch.delete(_firestore.collection('friends').doc('$friendId\_$currentUserId'));
-
       await batch.commit();
       notifyListeners();
     } catch (e) {
@@ -331,7 +309,6 @@ class FirebaseService with ChangeNotifier {
     }
   }
 
-  // 🔹 NEW: Check friend status (for PublicProfileScreen)
   Stream<DocumentSnapshot> getFriendStatus(String friendId) {
     final currentUserId = currentUser?.uid;
     if (currentUserId == null) {
@@ -343,7 +320,6 @@ class FirebaseService with ChangeNotifier {
         .snapshots();
   }
 
-  // NEW: Get friends list as UserModel objects
   Stream<List<UserModel>> getFriendsList() {
     try {
       if (_auth.currentUser == null) {
@@ -355,33 +331,33 @@ class FirebaseService with ChangeNotifier {
           .collection('friends')
           .snapshots()
           .asyncMap((snapshot) async {
-            if (snapshot.docs.isEmpty) return <UserModel>[];
-            final friendIds = snapshot.docs.map((doc) => doc.id).toList();
-            final usersSnapshot = await _firestore
-                .collection('users')
-                .where('uid', whereIn: friendIds)
-                .get();
-            return usersSnapshot.docs
-                .map((doc) {
-                  final userData = doc.data();
-                  return UserModel(
-                    uid: userData['uid'] ?? doc.id,
-                    email: userData['email'] ?? '',
-                    username: userData['displayName'] ?? 'User',
-                    fullName: userData['displayName'] ?? 'User',
-                    bio: userData['bio'] ?? '',
-                    profileImageUrl: userData['profileImageUrl'] ?? '',
-                    followers: List<String>.from(userData['followers'] ?? []),
-                    following: List<String>.from(userData['following'] ?? []),
-                    joinedDate: (userData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                  );
-                })
-                .toList();
-          })
+        if (snapshot.docs.isEmpty) return <UserModel>[];
+        final friendIds = snapshot.docs.map((doc) => doc.id).toList();
+        final usersSnapshot = await _firestore
+            .collection('users')
+            .where('uid', whereIn: friendIds)
+            .get();
+        return usersSnapshot.docs
+            .map((doc) {
+          final userData = doc.data();
+          return UserModel(
+            uid: userData['uid'] ?? doc.id,
+            email: userData['email'] ?? '',
+            username: userData['displayName'] ?? 'User',
+            fullName: userData['displayName'] ?? 'User',
+            bio: userData['bio'] ?? '',
+            profileImageUrl: userData['profileImageUrl'] ?? '',
+            followers: List<String>.from(userData['followers'] ?? []),
+            following: List<String>.from(userData['following'] ?? []),
+            joinedDate: (userData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          );
+        })
+            .toList();
+      })
           .handleError((error) {
-            _setError('Failed to load friends.');
-            return <UserModel>[];
-          });
+        _setError('Failed to load friends.');
+        return <UserModel>[];
+      });
     } catch (e) {
       _setError('Failed to get friends list.');
       return Stream.value(<UserModel>[]);
@@ -413,10 +389,10 @@ class FirebaseService with ChangeNotifier {
         'postId': postId,
         'savedAt': FieldValue.serverTimestamp(),
         'postType': postData['type'] ?? 'social',
-        'postPreview': postData['content'] != null 
-            ? (postData['content'] as String).length > 100 
-              ? '${(postData['content'] as String).substring(0, 100)}...'
-              : postData['content']
+        'postPreview': postData['content'] != null
+            ? (postData['content'] as String).length > 100
+            ? '${(postData['content'] as String).substring(0, 100)}...'
+            : postData['content']
             : 'Saved post',
         'userName': postData['userName'],
         'userAvatar': postData['userAvatar'],
@@ -479,9 +455,9 @@ class FirebaseService with ChangeNotifier {
           .snapshots()
           .map((snapshot) => snapshot.exists)
           .handleError((error) {
-            _setError('Failed to check save status.');
-            return false;
-          });
+        _setError('Failed to check save status.');
+        return false;
+      });
     } catch (e) {
       _setError('Failed to get save status.');
       return Stream.value(false);
@@ -500,9 +476,9 @@ class FirebaseService with ChangeNotifier {
           .orderBy('savedAt', descending: true)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load saved posts.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load saved posts.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get saved posts.');
       return const Stream.empty();
@@ -547,12 +523,12 @@ class FirebaseService with ChangeNotifier {
           .doc(_auth.currentUser!.uid)
           .collection('recent_activities')
           .add({
-            'type': type,
-            'title': title,
-            'description': description,
-            'data': data ?? {},
-            'timestamp': FieldValue.serverTimestamp(),
-          });
+        'type': type,
+        'title': title,
+        'description': description,
+        'data': data ?? {},
+        'timestamp': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
       _setError('Failed to add activity.');
     }
@@ -571,9 +547,9 @@ class FirebaseService with ChangeNotifier {
           .limit(10)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load activities.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load activities.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get user activities.');
       return const Stream.empty();
@@ -598,12 +574,12 @@ class FirebaseService with ChangeNotifier {
             .collection('achievements')
             .doc(achievementId)
             .set({
-              'id': achievementId,
-              'title': title,
-              'description': description,
-              'points': points,
-              'unlockedAt': FieldValue.serverTimestamp(),
-            });
+          'id': achievementId,
+          'title': title,
+          'description': description,
+          'points': points,
+          'unlockedAt': FieldValue.serverTimestamp(),
+        });
         await updateUserStats(points: points);
         await addUserActivity(
           'achievement_unlocked',
@@ -630,9 +606,9 @@ class FirebaseService with ChangeNotifier {
           .orderBy('unlockedAt', descending: true)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load achievements.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load achievements.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get user achievements.');
       return const Stream.empty();
@@ -669,12 +645,12 @@ class FirebaseService with ChangeNotifier {
           .collection('members')
           .doc(_auth.currentUser!.uid)
           .set({
-            'userId': _auth.currentUser!.uid,
-            'userName': userData?['displayName'] ?? 'User',
-            'userAvatar': userData?['avatar'] ?? 'U',
-            'joinedAt': FieldValue.serverTimestamp(),
-            'role': 'admin',
-          });
+        'userId': _auth.currentUser!.uid,
+        'userName': userData?['displayName'] ?? 'User',
+        'userAvatar': userData?['avatar'] ?? 'U',
+        'joinedAt': FieldValue.serverTimestamp(),
+        'role': 'admin',
+      });
       await addUserActivity(
         'group_created',
         'Study Group Created',
@@ -710,12 +686,12 @@ class FirebaseService with ChangeNotifier {
           .collection('members')
           .doc(_auth.currentUser!.uid)
           .set({
-            'userId': _auth.currentUser!.uid,
-            'userName': userData?['displayName'] ?? 'User',
-            'userAvatar': userData?['avatar'] ?? 'U',
-            'joinedAt': FieldValue.serverTimestamp(),
-            'role': 'member',
-          });
+        'userId': _auth.currentUser!.uid,
+        'userName': userData?['displayName'] ?? 'User',
+        'userAvatar': userData?['avatar'] ?? 'U',
+        'joinedAt': FieldValue.serverTimestamp(),
+        'role': 'member',
+      });
       await _firestore.collection('study_groups').doc(groupId).update({
         'memberCount': FieldValue.increment(1),
         'members': FieldValue.arrayUnion([_auth.currentUser!.uid]),
@@ -748,9 +724,9 @@ class FirebaseService with ChangeNotifier {
           .orderBy('updatedAt', descending: true)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load study groups.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load study groups.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get user study groups.');
       return const Stream.empty();
@@ -765,9 +741,9 @@ class FirebaseService with ChangeNotifier {
           .limit(50)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load study groups.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load study groups.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get all study groups.');
       return const Stream.empty();
@@ -885,9 +861,9 @@ class FirebaseService with ChangeNotifier {
           .orderBy('timestamp', descending: true)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load posts.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load posts.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get posts.');
       return const Stream.empty();
@@ -902,9 +878,9 @@ class FirebaseService with ChangeNotifier {
           .orderBy('timestamp', descending: true)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load user posts.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load user posts.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get user posts.');
       return const Stream.empty();
@@ -1028,9 +1004,9 @@ class FirebaseService with ChangeNotifier {
           .snapshots()
           .map((snapshot) => snapshot.exists)
           .handleError((error) {
-            _setError('Failed to check like status.');
-            return false;
-          });
+        _setError('Failed to check like status.');
+        return false;
+      });
     } catch (e) {
       _setError('Failed to get post like status.');
       return Stream.value(false);
@@ -1105,9 +1081,9 @@ class FirebaseService with ChangeNotifier {
           .orderBy('timestamp', descending: false)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load comments.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load comments.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get comments.');
       return const Stream.empty();
@@ -1156,9 +1132,9 @@ class FirebaseService with ChangeNotifier {
           .snapshots()
           .map((snapshot) => snapshot.exists)
           .handleError((error) {
-            _setError('Failed to check comment like status.');
-            return false;
-          });
+        _setError('Failed to check comment like status.');
+        return false;
+      });
     } catch (e) {
       _setError('Failed to get comment like status.');
       return Stream.value(false);
@@ -1181,7 +1157,7 @@ class FirebaseService with ChangeNotifier {
   }
 
   // ========== NOTIFICATION METHODS ==========
-  // 🔹 NEW: Unified notification sender with deep-link data
+
   Future<void> sendNotification({
     required String receiverId,
     required String type,
@@ -1195,13 +1171,8 @@ class FirebaseService with ChangeNotifier {
   }) async {
     _clearError();
     try {
-      // Use a batched write so the notification and unread count update
-      // are committed together. Also add a client-side timestamp
-      // (`createdAt`) so the UI can order and display the notification
-      // immediately without waiting for the server timestamp to resolve.
       final notificationId = _firestore.collection('notifications').doc().id;
       final batch = _firestore.batch();
-
       final notificationRef = _firestore.collection('notifications').doc(notificationId);
       batch.set(notificationRef, {
         'id': notificationId,
@@ -1218,65 +1189,30 @@ class FirebaseService with ChangeNotifier {
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
       });
-
       final userRef = _firestore.collection('users').doc(receiverId);
       batch.update(userRef, {'unreadNotifications': FieldValue.increment(1)});
-
       await batch.commit();
     } catch (e) {
       _setError('Failed to send notification.');
     }
   }
 
-  // 🔹 NEW: Get notifications with deep-link data
+  // ✅ FIXED: Simple, reliable query
   Stream<QuerySnapshot> getNotifications() {
     try {
       if (_auth.currentUser == null) {
         return const Stream.empty();
       }
-
       final String uid = _auth.currentUser!.uid;
-
-      // We'll attempt a lightweight check: try a one-time get ordered by
-      // `createdAt`. If that query fails (for example due to missing index
-      // or permissions), fall back to ordering by server `timestamp`.
-      final controller = StreamController<QuerySnapshot>.broadcast();
-      controller.onListen = () async {
-        try {
-          final createdQuery = _firestore
-              .collection('notifications')
-              .where('userId', isEqualTo: uid)
-              .orderBy('createdAt', descending: true);
-
-          // Test the query quickly.
-          await createdQuery.limit(1).get();
-
-          // If successful, pipe the realtime snapshots to the controller.
-          createdQuery.snapshots().listen(
-            (s) => controller.add(s),
-            onError: (e) {
-              _setError('Failed to load notifications: $e');
-              controller.addError(e);
-            },
-          );
-        } catch (e) {
-          // Fallback to server timestamp ordering.
-          _setError('createdAt query failed, falling back to timestamp. $e');
-          final tsQuery = _firestore
-              .collection('notifications')
-              .where('userId', isEqualTo: uid)
-              .orderBy('timestamp', descending: true);
-          tsQuery.snapshots().listen(
-            (s) => controller.add(s),
-            onError: (err) {
-              _setError('Failed to load notifications: $err');
-              controller.addError(err);
-            },
-          );
-        }
-      };
-
-      return controller.stream;
+      return _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .handleError((error) {
+        _setError('Failed to load notifications: $error');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get user notifications.');
       return const Stream.empty();
@@ -1291,8 +1227,8 @@ class FirebaseService with ChangeNotifier {
           .collection('notifications')
           .doc(notificationId)
           .update({
-            'isRead': true,
-          });
+        'isRead': true,
+      });
       await _firestore.collection('users').doc(_auth.currentUser!.uid).update({
         'unreadNotifications': FieldValue.increment(-1),
       });
@@ -1336,9 +1272,9 @@ class FirebaseService with ChangeNotifier {
           .doc(_auth.currentUser!.uid)
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load notification count.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load notification count.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get unread notification count.');
       return const Stream.empty();
@@ -1346,8 +1282,6 @@ class FirebaseService with ChangeNotifier {
   }
 
   // ========== FRIENDS SYSTEM ==========
-  // 🔹 Already implemented above (send/accept/decline)
-
   Future<void> removeFriend(String friendUserId) async {
     _setLoading(true);
     _clearError();
@@ -1387,9 +1321,9 @@ class FirebaseService with ChangeNotifier {
           .where('status', isEqualTo: 'pending')
           .snapshots()
           .handleError((error) {
-            _setError('Failed to load friend requests.');
-            return const Stream.empty();
-          });
+        _setError('Failed to load friend requests.');
+        return const Stream.empty();
+      });
     } catch (e) {
       _setError('Failed to get friend requests.');
       return const Stream.empty();
@@ -1552,7 +1486,6 @@ class FirebaseService with ChangeNotifier {
       if (_auth.currentUser == null) return;
       final currentUserId = _auth.currentUser!.uid;
       if (currentUserId == storyOwnerId) return;
-
       final storyLikeRef = _firestore
           .collection('stories')
           .doc(storyId)
@@ -1601,9 +1534,9 @@ class FirebaseService with ChangeNotifier {
           .snapshots()
           .map((snapshot) => snapshot.exists)
           .handleError((error) {
-            _setError('Failed to check story like status.');
-            return false;
-          });
+        _setError('Failed to check story like status.');
+        return false;
+      });
     } catch (e) {
       _setError('Failed to get story like status.');
       return Stream.value(false);

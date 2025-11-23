@@ -14,8 +14,8 @@ import 'story_screen.dart';
 import 'stories_section.dart';
 import 'saved_posts_screen.dart';
 import '../widgets/skeleton_loader.dart';
-import 'search_results_screen.dart'; // 👈 NEW
-import 'chat_list_screen.dart';     // 👈 NEW
+import 'search_results_screen.dart';
+import 'chat_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,10 +30,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late Animation<double> _fadeAnimation;
   final RefreshController _refreshController = RefreshController(initialRefresh: false);
   final ScrollController _scrollController = ScrollController();
-  bool _isLoadingPosts = false;
   bool _hasError = false;
   String _errorMessage = '';
-  final TextEditingController _searchController = TextEditingController(); // 👈 NEW
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -62,11 +61,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _animationController.dispose();
     _refreshController.dispose();
     _scrollController.dispose();
-    _searchController.dispose(); // 👈 NEW
+    _searchController.dispose();
     super.dispose();
   }
 
-  // 👇 NEW: User search method
   void _searchUsers() {
     if (_searchController.text.trim().isEmpty) return;
     Navigator.push(
@@ -261,52 +259,34 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Color _getPostColor(String type) {
     switch (type) {
-      case 'educational':
-        return Colors.blue;
-      case 'quiz':
-        return Colors.green;
-      case 'studyGroup':
-        return Colors.orange;
-      case 'resource':
-        return Colors.purple;
-      case 'achievement':
-        return Colors.amber;
-      default:
-        return const Color(0xFF7C3AED);
+      case 'educational': return Colors.blue;
+      case 'quiz': return Colors.green;
+      case 'studyGroup': return Colors.orange;
+      case 'resource': return Colors.purple;
+      case 'achievement': return Colors.amber;
+      default: return const Color(0xFF7C3AED);
     }
   }
 
   IconData _getPostIcon(String type) {
     switch (type) {
-      case 'educational':
-        return Icons.school_rounded;
-      case 'quiz':
-        return Icons.quiz_rounded;
-      case 'studyGroup':
-        return Icons.groups_rounded;
-      case 'resource':
-        return Icons.library_books_rounded;
-      case 'achievement':
-        return Icons.emoji_events_rounded;
-      default:
-        return Icons.person_rounded;
+      case 'educational': return Icons.school_rounded;
+      case 'quiz': return Icons.quiz_rounded;
+      case 'studyGroup': return Icons.groups_rounded;
+      case 'resource': return Icons.library_books_rounded;
+      case 'achievement': return Icons.emoji_events_rounded;
+      default: return Icons.person_rounded;
     }
   }
 
   String _getPostTypeLabel(String type) {
     switch (type) {
-      case 'educational':
-        return 'Educational';
-      case 'quiz':
-        return 'Quiz';
-      case 'studyGroup':
-        return 'Study Group';
-      case 'resource':
-        return 'Resource';
-      case 'achievement':
-        return 'Achievement';
-      default:
-        return 'Social';
+      case 'educational': return 'Educational';
+      case 'quiz': return 'Quiz';
+      case 'studyGroup': return 'Study Group';
+      case 'resource': return 'Resource';
+      case 'achievement': return 'Achievement';
+      default: return 'Social';
     }
   }
 
@@ -416,6 +396,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final firebaseService = Provider.of<FirebaseService>(context);
+    final user = firebaseService.currentUser;
+
+    // Prevent UI issues if user logs out mid-session
+    if (user == null) {
+      return Scaffold(
+        body: Center(child: Text('Please log in.', style: TextStyle(color: Colors.white))),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: AnimatedBuilder(
@@ -458,6 +447,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           StreamBuilder<DocumentSnapshot>(
                             stream: firebaseService.getUnreadNotificationCount(),
                             builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                // Don't crash UI — show neutral icon
+                                return Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.notifications_none_rounded,
+                                    color: Colors.white.withOpacity(0.8),
+                                    size: 22,
+                                  ),
+                                );
+                              }
                               int unreadCount = 0;
                               if (snapshot.hasData && snapshot.data!.exists) {
                                 final userData = snapshot.data!.data() as Map<String, dynamic>;
@@ -495,7 +499,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             },
                           ),
                           const SizedBox(width: 12),
-                          // 🔴 UPDATED: Search icon now opens user search dialog
                           MouseRegion(
                             cursor: SystemMouseCursors.click,
                             child: GestureDetector(
@@ -569,6 +572,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       children: List.generate(6, (index) => const StorySkeleton()),
                                     ),
                                   );
+                                }
+                                if (snapshot.hasError) {
+                                  return Container(); // Silent fallback
                                 }
                                 return const StoriesSection();
                               },
@@ -756,7 +762,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         },
       ),
-      // 🔴 UPDATED: Bottom Nav — Replace "Friends" with "Chat"
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF1E293B),
@@ -787,7 +792,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const ExploreScreen()));
                 }),
                 _buildFloatingActionButton(),
-                // 🔴 REPLACED: Friends → Chat
                 MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
@@ -856,7 +860,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -1282,16 +1286,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
+                // ✅ FIXED: Handle stream errors gracefully
                 StreamBuilder<bool>(
-                  stream: Provider.of<FirebaseService>(context, listen: false).getPostLikeStatus(postId),
+                  stream: firebaseService.getPostLikeStatus(postId),
                   builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      // Show neutral state instead of crashing
+                      return _buildPostAction(
+                        Icons.favorite_border_rounded,
+                        'Like',
+                        Colors.white.withOpacity(0.6),
+                        () {},
+                      );
+                    }
                     final isLiked = snapshot.data ?? false;
                     return _buildPostAction(
                       Icons.favorite_rounded,
                       'Like',
                       isLiked ? Colors.red : Colors.white.withOpacity(0.6),
                       () {
-                        Provider.of<FirebaseService>(context, listen: false).likePost(postId);
+                        firebaseService.likePost(postId);
                       },
                     );
                   },
@@ -1321,8 +1335,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   },
                 ),
                 StreamBuilder<bool>(
-                  stream: Provider.of<FirebaseService>(context, listen: false).getPostSaveStatus(postId),
+                  stream: firebaseService.getPostSaveStatus(postId),
                   builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return _buildPostAction(
+                        Icons.bookmark_border_rounded,
+                        'Save',
+                        Colors.white.withOpacity(0.6),
+                        () {},
+                      );
+                    }
                     final isSaved = snapshot.data ?? false;
                     return _buildPostAction(
                       isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
@@ -1330,9 +1352,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       isSaved ? const Color(0xFF7C3AED) : Colors.white.withOpacity(0.6),
                       () {
                         if (isSaved) {
-                          Provider.of<FirebaseService>(context, listen: false).unsavePost(postId);
+                          firebaseService.unsavePost(postId);
                         } else {
-                          Provider.of<FirebaseService>(context, listen: false).savePost(postId);
+                          firebaseService.savePost(postId);
                         }
                       },
                     );
